@@ -1,0 +1,77 @@
+name: Docker Build and Push to ACR
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - 'build/*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag version to build (optional, defaults to current ref)'
+        required: false
+        type: string
+
+env:
+  REGISTRY: registry.cn-shanghai.aliyuncs.com
+  NAMESPACE: linran-pub
+  IMAGE_NAME: sing-box
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve ref and image tags
+        id: ref
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            source_ref="${{ github.event.inputs.tag }}"
+          else
+            source_ref="${{ github.ref_name }}"
+          fi
+
+          image_tag="${source_ref##*/}"
+          image_tag="${image_tag//\//-}"
+
+          if [[ "$image_tag" == *"-"* ]]; then
+            latest="latest-beta"
+          else
+            latest="latest"
+          fi
+
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.source_ref }}
+
+      - name: Log in to Alibaba Cloud ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build single-arch image (linux/amd64)
+        shell: bash
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}"
+          docker build \
+            -t "${IMAGE}:${{ steps.ref.outputs.image_tag }}" \
+            -t "${IMAGE}:${{ steps.ref.outputs.latest }}" \
+            .
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE_NAME }}"
+          docker push "${IMAGE}:${{ steps.ref.outputs.image_tag }}"
+          docker push "${IMAGE}:${{ steps.ref.outputs.latest }}"
