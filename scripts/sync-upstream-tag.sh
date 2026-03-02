@@ -77,8 +77,8 @@ else
   echo "==> Workflow unchanged, no commit needed"
 fi
 
-echo "==> Pushing branch to $ORIGIN_REMOTE"
-git push -u "$ORIGIN_REMOTE" "$BUILD_BRANCH"
+echo "==> Force pushing branch to $ORIGIN_REMOTE"
+git push -u --force "$ORIGIN_REMOTE" "$BUILD_BRANCH"
 
 echo
 echo "Done: $BUILD_BRANCH"
