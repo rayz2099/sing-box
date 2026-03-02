@@ -25,6 +25,11 @@ MAIN_BRANCH="${MAIN_BRANCH:-main}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-.github/workflows/docker-build-push.yml}"
 BUILD_BRANCH="build/${TAG}"
 
+restore_main() {
+  git checkout "$MAIN_BRANCH" >/dev/null 2>&1 || true
+}
+trap restore_main EXIT
+
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Error: current directory is not a git repository."
   exit 1
