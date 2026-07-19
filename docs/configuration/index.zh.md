@@ -34,6 +34,8 @@ sing-box 使用 JSON 作为配置文件格式。
 | `services`     | [服务](./service/)       |
 | `experimental` | [实验性](./experimental/) |
 
+另见独立入口: [订阅](./subscription/) (`sing-box run --subscription`).
+
 ### 检查
 
 ```bash

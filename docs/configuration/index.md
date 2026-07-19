@@ -34,6 +34,8 @@ sing-box uses JSON for configuration files.
 | `services`     | [Service](./service/)           |
 | `experimental` | [Experimental](./experimental/) |
 
+See also: [Subscription](./subscription/) (`sing-box run --subscription`).
+
 ### Check
 
 ```bash

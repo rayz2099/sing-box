@@ -23,9 +23,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var subscriptionPath string
+
 var commandRun = &cobra.Command{
 	Use:   "run",
 	Short: "Run service",
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		err := run()
 		if err != nil {
@@ -35,6 +38,7 @@ var commandRun = &cobra.Command{
 }
 
 func init() {
+	commandRun.Flags().StringVar(&subscriptionPath, "subscription", "", "run with subscription meta file")
 	mainCommand.AddCommand(commandRun)
 }
 
@@ -167,6 +171,9 @@ func create() (*box.Box, context.CancelFunc, error) {
 }
 
 func run() error {
+	if subscriptionPath != "" {
+		return runSubscription(subscriptionPath)
+	}
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(osSignals)

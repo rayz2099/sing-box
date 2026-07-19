@@ -112,6 +112,7 @@ nav:
           - Source Format: configuration/rule-set/source-format.md
           - Headless Rule: configuration/rule-set/headless-rule.md
           - AdGuard DNS Filer: configuration/rule-set/adguard.md
+      - Subscription: configuration/subscription/index.md
       - Experimental:
           - configuration/experimental/index.md
           - Cache File: configuration/experimental/cache-file.md
@@ -261,6 +262,7 @@ plugins:
             Source Format: 源文件格式
             Headless Rule: 无头规则
 
+            Subscription: 订阅
             Experimental: 实验性
             Cache File: 缓存文件
 

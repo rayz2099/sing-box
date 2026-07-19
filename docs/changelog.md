@@ -2,6 +2,11 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.1
+
+* Add built-in subscription runtime (`run --subscription`) for mutually exclusive full profiles **radiance**
+* Add embedded `default` profile and `sing-box subscription` control CLI **radiance**
+
 #### 1.13.0
 
 Important changes since 1.12:
