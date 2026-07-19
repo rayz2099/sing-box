@@ -11,13 +11,11 @@ Built-in subscription runtime for mutually exclusive full sing-box profiles
 
 ### Structure
 
+Default config home: `/usr/local/etc/sing-box/`.  
+`listen` / `cache_dir` / `update_interval` / `active` are optional (filled relative to the meta directory; `active` defaults to `default`).
+
 ```json
 {
-  "listen": "unix:///var/run/sing-box/subscription.sock",
-  "active": "default",
-  "update_interval": "24h",
-  "cache_dir": "/var/lib/sing-box/subscriptions",
-  "download_detour": "",
   "subscriptions": [
     {
       "tag": "default",
@@ -26,7 +24,7 @@ Built-in subscription runtime for mutually exclusive full sing-box profiles
     {
       "tag": "tun",
       "url": "https://example.com/sb-tun.json",
-      "path": "/usr/local/etc/sing-box/sb-tun.json"
+      "path": "sb-tun.json"
     }
   ]
 }
@@ -62,7 +60,8 @@ At least one of `builtin` / `url` / `path` is required.
 ### Run
 
 ```bash
-sing-box run --subscription /usr/local/etc/sing-box/subscriptions.json
+# no path → default home: /usr/local/etc/sing-box/subscriptions.json
+sing-box run --subscription
 ```
 
 `-c` is unchanged and still runs a normal full config.
@@ -70,10 +69,10 @@ sing-box run --subscription /usr/local/etc/sing-box/subscriptions.json
 ### Control
 
 ```bash
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json status
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json switch tun
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json switch default
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json update
+sing-box subscription status
+sing-box subscription switch tun
+sing-box subscription switch default
+sing-box subscription update
 ```
 
 Switch/update talk to the unix socket from `listen`. Do **not** append `status` to `run`.

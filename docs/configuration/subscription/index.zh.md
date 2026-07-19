@@ -10,13 +10,11 @@ icon: material/cloud-sync
 
 ### 结构
 
+默认配置 home: `/usr/local/etc/sing-box/`.  
+`listen` / `cache_dir` / `update_interval` / `active` 均可省略 (相对 meta 目录补齐; `active` 默认 `default`).
+
 ```json
 {
-  "listen": "unix:///var/run/sing-box/subscription.sock",
-  "active": "default",
-  "update_interval": "24h",
-  "cache_dir": "/var/lib/sing-box/subscriptions",
-  "download_detour": "",
   "subscriptions": [
     {
       "tag": "default",
@@ -25,7 +23,7 @@ icon: material/cloud-sync
     {
       "tag": "tun",
       "url": "https://file.linran.top/singbox/sb-tun.json",
-      "path": "/usr/local/etc/sing-box/sb-tun.json"
+      "path": "sb-tun.json"
     }
   ]
 }
@@ -61,7 +59,8 @@ icon: material/cloud-sync
 ### 启动
 
 ```bash
-sing-box run --subscription /usr/local/etc/sing-box/subscriptions.json
+# 无参即默认 home: /usr/local/etc/sing-box/subscriptions.json
+sing-box run --subscription
 ```
 
 `-c` 语义不变, 仍直接跑完整配置.
@@ -69,10 +68,10 @@ sing-box run --subscription /usr/local/etc/sing-box/subscriptions.json
 ### 控制
 
 ```bash
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json status
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json switch tun
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json switch default
-sing-box subscription -s /usr/local/etc/sing-box/subscriptions.json update
+sing-box subscription status
+sing-box subscription switch tun
+sing-box subscription switch default
+sing-box subscription update
 ```
 
 switch/update 打到 `listen` 对应的 unix socket. **不要**写成 `run --subscription ... status`.

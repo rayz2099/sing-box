@@ -25,6 +25,10 @@ var activeFieldPattern = regexp.MustCompile(`("active"\s*:\s*)"(?:\\.|[^"\\])*"`
 
 // LoadMeta 读取并校验 meta; 缺省值就地补齐, 保证冷启动路径确定.
 func LoadMeta(path string) (*Meta, error) {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	// 若是 symlink, 仍用调用方路径的 Dir 作为 home (etc), 不用 resolve 到 develop
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, E.Cause(err, "read subscription meta")
@@ -45,9 +49,7 @@ func normalizeMeta(meta *Meta, metaPath string) error {
 	if len(meta.Subscriptions) == 0 {
 		return E.New("subscriptions is empty")
 	}
-	if meta.Active == "" {
-		return E.New("active is required")
-	}
+	// listen / cache_dir / update_interval 未配置时相对 meta 所在 home 补齐
 	metaDir := filepath.Dir(metaPath)
 	if meta.CacheDir == "" {
 		meta.CacheDir = filepath.Join(metaDir, "subscription-cache")
@@ -61,7 +63,6 @@ func normalizeMeta(meta *Meta, metaPath string) error {
 		meta.UpdateInterval = badoption.Duration(defaultUpdInterval)
 	}
 	seen := make(map[string]bool)
-	activeFound := false
 	for i := range meta.Subscriptions {
 		entry := &meta.Subscriptions[i]
 		if entry.Tag == "" {
@@ -82,11 +83,14 @@ func normalizeMeta(meta *Meta, metaPath string) error {
 		if entry.Path != "" && !filepath.IsAbs(entry.Path) {
 			entry.Path = filepath.Join(metaDir, entry.Path)
 		}
-		if entry.Tag == meta.Active {
-			activeFound = true
-		}
 	}
-	if !activeFound {
+	if meta.Active == "" {
+		if seen["default"] {
+			meta.Active = "default"
+		} else {
+			meta.Active = meta.Subscriptions[0].Tag
+		}
+	} else if !seen[meta.Active] {
 		return E.New("active subscription not found: ", meta.Active)
 	}
 	return nil

@@ -101,6 +101,8 @@ func resolveProfile(
 		if err = verifyHash(content, entry.Hash); err != nil {
 			return nil, E.Cause(err, "cache")
 		}
+		// cache 命中但种子缺失时补齐 path, 方便用户直接看到/编辑
+		_ = writeSeedIfMissing(entry.Path, content)
 		return content, nil
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, E.Cause(err, "load cache")
@@ -132,6 +134,9 @@ func resolveProfile(
 	err = store.Save(entry.Tag, result.content, result.etag)
 	if err != nil {
 		return nil, err
+	}
+	if err = writeSeedIfMissing(entry.Path, result.content); err != nil {
+		return nil, E.Cause(err, "write seed ", entry.Path)
 	}
 	return result.content, nil
 }

@@ -111,6 +111,12 @@ func (c *Controller) Start() error {
 
 	c.updTicker = time.NewTicker(c.meta.UpdateInterval.Build())
 	go c.loopUpdate()
+	// 启动后立刻预热非 active 远端 (补 cache / 缺失的 path 种子), 不阻塞就绪
+	go func() {
+		if err := c.Update(""); err != nil {
+			c.logger.Error("subscription warm-up: ", err)
+		}
+	}()
 	c.logger.Info("subscription controller started, active=", c.activeTag)
 	return nil
 }
@@ -288,6 +294,9 @@ func (c *Controller) updateEntryLocked(entry *Entry) error {
 	err = c.cache.Save(entry.Tag, result.content, result.etag)
 	if err != nil {
 		return err
+	}
+	if err = writeSeedIfMissing(entry.Path, result.content); err != nil {
+		return E.Cause(err, "write seed ", entry.Path)
 	}
 	if !changed {
 		c.logger.Info("subscription ", entry.Tag, ": content unchanged")

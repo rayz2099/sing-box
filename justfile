@@ -23,3 +23,14 @@ build:
       -tags "{{tags}}" \
       -o "{{name}}" \
       "{{main}}"
+
+# 构建后 mv 到 GOPATH/bin (实体文件, 非 symlink; develop 再链到 gobin)
+install: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gobin="$(go env GOPATH)/bin"
+    mkdir -p "$gobin" "$HOME/develop/sing-box"
+    rm -f "$gobin/sing-box"
+    mv -f "$PWD/sing-box" "$gobin/sing-box"
+    ln -sfn "$gobin/sing-box" "$HOME/develop/sing-box/sing-box"
+    "$gobin/sing-box" version

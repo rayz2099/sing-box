@@ -6,7 +6,6 @@ import (
 
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/subscription"
-	E "github.com/sagernet/sing/common/exceptions"
 
 	"github.com/spf13/cobra"
 )
@@ -59,13 +58,14 @@ var commandSubscriptionUpdate = &cobra.Command{
 
 func init() {
 	commandSubscription.PersistentFlags().StringVarP(&subscriptionMetaPath, "subscription", "s", "", "subscription meta file path")
+	commandSubscription.PersistentFlags().Lookup("subscription").NoOptDefVal = "auto"
 	commandSubscription.AddCommand(commandSubscriptionStatus, commandSubscriptionSwitch, commandSubscriptionUpdate)
 	mainCommand.AddCommand(commandSubscription)
 }
 
 func requireSubMeta() (string, error) {
-	if subscriptionMetaPath == "" {
-		return "", E.New("subscription meta path is required: use -s/--subscription")
+	if subscriptionMetaPath == "" || subscriptionMetaPath == "auto" {
+		return subscription.DefaultMetaPath(), nil
 	}
 	return subscriptionMetaPath, nil
 }

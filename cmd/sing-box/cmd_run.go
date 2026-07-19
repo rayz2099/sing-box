@@ -16,6 +16,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/subscription"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
@@ -39,6 +40,8 @@ var commandRun = &cobra.Command{
 
 func init() {
 	commandRun.Flags().StringVar(&subscriptionPath, "subscription", "", "run with subscription meta file")
+	// 无参 --subscription 走默认 home: /usr/local/etc/sing-box/subscriptions.json
+	commandRun.Flags().Lookup("subscription").NoOptDefVal = "auto"
 	mainCommand.AddCommand(commandRun)
 }
 
@@ -172,7 +175,11 @@ func create() (*box.Box, context.CancelFunc, error) {
 
 func run() error {
 	if subscriptionPath != "" {
-		return runSubscription(subscriptionPath)
+		path := subscriptionPath
+		if path == "auto" {
+			path = subscription.DefaultMetaPath()
+		}
+		return runSubscription(path)
 	}
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)

@@ -2,10 +2,12 @@
 icon: material/alert-decagram
 ---
 
-#### 1.13.1
+#### 1.14.0
 
 * Add built-in subscription runtime (`run --subscription`) for mutually exclusive full profiles **radiance**
 * Add embedded `default` profile and `sing-box subscription` control CLI **radiance**
+* Default config home `/usr/local/etc/sing-box` for subscription meta / listen / cache / seeds **radiance**
+* Create missing subscription seed files from remote fetch; warm remote profiles on start **radiance**
 
 #### 1.13.0
 
