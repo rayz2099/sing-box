@@ -46,7 +46,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.26.1
       - name: Check input version
         if: github.event_name == 'workflow_dispatch'
         run: |-
@@ -123,7 +123,7 @@ jobs:
         if: ${{ ! (matrix.legacy_win7 || matrix.legacy_go124) }}
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.26.1
       - name: Setup Go 1.24
         if: matrix.legacy_go124
         uses: actions/setup-go@v5
@@ -439,7 +439,7 @@ jobs:
         if: ${{ ! matrix.legacy_go124 }}
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.3
+          go-version: ^1.26.1
       - name: Setup Go 1.24
         if: matrix.legacy_go124
         uses: actions/setup-go@v5
@@ -512,7 +512,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.26.1
       - name: Set tag
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$env:GITHUB_ENV"
@@ -592,7 +592,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.26.1
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -682,7 +682,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.26.1
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -781,7 +781,7 @@ jobs:
         if: matrix.if
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.26.1
       - name: Set tag
         if: matrix.if
         run: |-
