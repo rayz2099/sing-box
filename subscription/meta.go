@@ -120,9 +120,45 @@ func sockPath(listen string) (string, error) {
 	return listen, nil
 }
 
-// SaveActive 只替换 meta 中的 active 字段, 避免重排其它配置或改写相对路径.
+// metaWritePath 解析 active 写盘目标; symlink 写 target, 避免 rename 把 link 顶成普通文件.
+func metaWritePath(metaPath string) (string, error) {
+	info, err := os.Lstat(metaPath)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return metaPath, nil
+	}
+	target, err := filepath.EvalSymlinks(metaPath)
+	if err != nil {
+		return "", E.Cause(err, "resolve subscription meta symlink")
+	}
+	return target, nil
+}
+
+// insertActiveField 在缺省 active 的 meta 中补字段, 让 switch 后冷启动可恢复.
+func insertActiveField(content []byte, activeJSON string) ([]byte, error) {
+	idx := strings.IndexByte(string(content), '{')
+	if idx < 0 {
+		return nil, E.New("invalid meta json: missing object")
+	}
+	var b strings.Builder
+	b.Grow(len(content) + len(activeJSON) + 16)
+	b.Write(content[:idx+1])
+	b.WriteString("\n  \"active\": ")
+	b.WriteString(activeJSON)
+	b.WriteByte(',')
+	b.Write(content[idx+1:])
+	return []byte(b.String()), nil
+}
+
+// SaveActive 只改 meta 中的 active: 有则替换, 无则插入; 不重排其它配置或改写相对路径.
 func SaveActive(metaPath string, active string) error {
-	content, err := os.ReadFile(metaPath)
+	writePath, err := metaWritePath(metaPath)
+	if err != nil {
+		return E.Cause(err, "resolve subscription meta path")
+	}
+	content, err := os.ReadFile(writePath)
 	if err != nil {
 		return E.Cause(err, "read subscription meta")
 	}
@@ -145,14 +181,27 @@ func SaveActive(metaPath string, active string) error {
 	if err != nil {
 		return err
 	}
-	if !activeFieldPattern.Match(content) {
-		return E.New("active field not found in meta file")
+	var encoded []byte
+	if activeFieldPattern.Match(content) {
+		encoded = activeFieldPattern.ReplaceAll(content, []byte(`${1}`+string(activeJSON)))
+	} else {
+		encoded, err = insertActiveField(content, string(activeJSON))
+		if err != nil {
+			return err
+		}
 	}
-	encoded := activeFieldPattern.ReplaceAll(content, []byte(`${1}`+string(activeJSON)))
-	tmp := metaPath + ".tmp"
+	// 校验补丁后仍是合法 meta, 避免脏写
+	var check Meta
+	if err = json.Unmarshal(encoded, &check); err != nil {
+		return E.Cause(err, "encode active field")
+	}
+	if check.Active != active {
+		return E.New("active field patch mismatch: ", check.Active)
+	}
+	tmp := writePath + ".tmp"
 	err = os.WriteFile(tmp, encoded, 0o644)
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, metaPath)
+	return os.Rename(tmp, writePath)
 }

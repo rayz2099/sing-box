@@ -183,6 +183,12 @@ func (c *Controller) Switch(tag string) error {
 	c.access.Lock()
 	defer c.access.Unlock()
 	if tag == c.activeTag {
+		// 幂等补写: 运行态已是目标时仍落盘, 修历史 save 失败后的冷启动丢失
+		c.meta.Active = tag
+		if saveErr := SaveActive(c.metaPath, tag); saveErr != nil {
+			c.logger.Error("save active to meta: ", saveErr)
+			return saveErr
+		}
 		return nil
 	}
 	entry, err := c.findEntry(tag)
