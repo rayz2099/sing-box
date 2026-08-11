@@ -4,6 +4,10 @@ name := "sing-box"
 tags := "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0"
 main := "./cmd/sing-box"
 
+# 显式声明默认入口, 避免 recipe 顺序变化后默认行为漂移
+[private]
+default: help
+
 # 列出可用 recipe (默认入口)
 help:
     @just --list
