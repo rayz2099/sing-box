@@ -1,0 +1,17 @@
+{
+  "comment": "shape copied from macos-tun.json http outbound (m-dt-http). no secrets.",
+  "outbounds": [
+    {
+      "tag": "lewis-http",
+      "type": "http",
+      "server": "lewis.home.linran.top",
+      "server_port": 1088
+    },
+    {
+      "tag": "m-dt-http",
+      "type": "http",
+      "server": "10.0.80.132",
+      "server_port": 8001
+    }
+  ]
+}

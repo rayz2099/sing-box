@@ -1,0 +1,137 @@
+# MITM clashapi 形状. 挂在 experimental.clash_api.external_controller 下, 走现有 Bearer.
+# Engine 未配置时整组 404. CaptureState 纯内存, 重启后要重新 POST scopes/filters.
+#
+# @host = http://127.0.0.1:19090
+# @secret 留空则不要带 Authorization. websocket 用 query token, 因为浏览器不能自定义头.
+
+@host = http://127.0.0.1:19090
+@secret =
+@scopeId = google
+@filterId = hdr-debug
+
+### 状态
+GET {{host}}/mitm
+Authorization: Bearer {{secret}}
+
+# {
+#   "enabled": false,
+#   "scopes": [{"id":"google","domain":["www.google.com"],"domain_suffix":[]}],
+#   "filters": [{"id":"hdr-debug","type":"header","priority":0,"when":{},"request":{"set":{"X-Debug":"1"}}}]
+# }
+
+### 开抓包
+PATCH {{host}}/mitm
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+
+### 关抓包
+PATCH {{host}}/mitm
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "enabled": false
+}
+
+### 下载 Capture CA
+GET {{host}}/mitm/ca
+Authorization: Bearer {{secret}}
+
+# Content-Type: application/x-pem-file
+# -----BEGIN CERTIFICATE-----
+
+### 注册精确域名 Scope
+# domain / domain_suffix 至少有一个, 空 Scope 会被 Engine 拒绝.
+POST {{host}}/mitm/scopes
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "id": "{{scopeId}}",
+  "domain": ["www.google.com", "google.com"]
+}
+
+### 注册后缀 Scope
+POST {{host}}/mitm/scopes
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "id": "example-suffix",
+  "domain_suffix": ["example.com"]
+}
+
+### 删除 Scope
+DELETE {{host}}/mitm/scopes/{{scopeId}}
+Authorization: Bearer {{secret}}
+
+### 注入 header Filter
+POST {{host}}/mitm/filters
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "id": "{{filterId}}",
+  "type": "header",
+  "priority": 10,
+  "when": {
+    "host": ["www.google.com"],
+    "path_prefix": ["/"],
+    "method": ["GET"]
+  },
+  "request": {
+    "set": {
+      "X-Debug": "1"
+    },
+    "remove": ["Cookie"]
+  },
+  "response": {
+    "set": {
+      "X-Mitm": "1"
+    }
+  }
+}
+
+### 注入 block Filter
+POST {{host}}/mitm/filters
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "id": "deny-ads",
+  "type": "block",
+  "priority": 0,
+  "when": {
+    "host": ["ads.example.com"]
+  },
+  "status": 204
+}
+
+### 删除 Filter
+DELETE {{host}}/mitm/filters/{{filterId}}
+Authorization: Bearer {{secret}}
+
+### 当前 Session 列表
+# v1 不持有历史索引, 固定返回 []
+GET {{host}}/mitm/sessions
+Authorization: Bearer {{secret}}
+
+### 明文事件流 (websocket)
+# 浏览器: GET {{host}}/mitm/capture?token={{secret}} Upgrade: websocket
+# 推送 MITMCaptureEvent:
+# {
+#   "session_id": "www.google.com-1",
+#   "host": "www.google.com",
+#   "alpn": "http/1.1",
+#   "method": "GET",
+#   "path": "/",
+#   "status": 200,
+#   "request_headers": {"User-Agent": ["..."]},
+#   "response_headers": {"Content-Type": ["text/html"]},
+#   "warning": ""
+# }
+WEBSOCKET {{host}}/mitm/capture?token={{secret}}

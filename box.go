@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/outbound"
 	boxService "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/common/certificate"
+	"github.com/sagernet/sing-box/common/mitm"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	"github.com/sagernet/sing-box/common/tls"
@@ -170,6 +171,14 @@ func New(options Options) (*Box, error) {
 		}
 		service.MustRegister[adapter.CertificateStore](ctx, certificateStore)
 		internalServices = append(internalServices, certificateStore)
+	}
+	if options.MITM != nil {
+		mitmEngine, err := mitm.NewEngine(ctx, logFactory.NewLogger("mitm"), *options.MITM)
+		if err != nil {
+			return nil, err
+		}
+		service.MustRegister[adapter.MITMEngine](ctx, mitmEngine)
+		internalServices = append(internalServices, mitmEngine)
 	}
 
 	routeOptions := common.PtrValueOrDefault(options.Route)

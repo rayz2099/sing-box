@@ -154,6 +154,10 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 	for _, tracker := range r.trackers {
 		conn = tracker.RoutedConnection(ctx, conn, metadata, selectedRule, selectedOutbound)
 	}
+	// 为什么: CachedConn 已保留 ClientHello, tracker 已记账, 再往下会原样转发密文.
+	if r.mitmInterceptTCP(ctx, conn, metadata, selectedOutbound, onClose) {
+		return nil
+	}
 	if outboundHandler, isHandler := selectedOutbound.(adapter.ConnectionHandlerEx); isHandler {
 		outboundHandler.NewConnectionEx(ctx, conn, metadata, onClose)
 	} else {
@@ -280,6 +284,8 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 	for _, tracker := range r.trackers {
 		conn = tracker.RoutedPacketConnection(ctx, conn, metadata, selectedRule, selectedOutbound)
 	}
+	// 为什么: sniff 已填 Protocol, MITM 不能拆 QUIC, 只能告警后继续转发.
+	r.mitmBypassQUIC(ctx, metadata)
 	if metadata.FakeIP {
 		conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), metadata.OriginDestination, metadata.Destination)
 	}

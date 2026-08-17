@@ -128,6 +128,8 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
 		r.Mount("/profile", profileRouter())
 		r.Mount("/cache", cacheRouter(ctx))
 		r.Mount("/dns", dnsRouter(s.dnsRouter))
+		// MITM 控制面始终挂上: 未配置时由 handler 返回 404 JSON, 避免客户端把缺路由当成实现遗漏.
+		r.Mount("/mitm", mitmRouter(service.FromContext[adapter.MITMEngine](ctx)))
 
 		s.setupMetaAPI(r)
 	})
