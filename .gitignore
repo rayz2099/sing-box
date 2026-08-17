@@ -19,7 +19,6 @@
 /config.d/
 /venv/
 CLAUDE.md
-AGENTS.md
 /.claude/
 /mitm-ca.crt
 /mitm-ca.key
