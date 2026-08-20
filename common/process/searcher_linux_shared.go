@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -150,10 +151,10 @@ func unpackSocketDiagResponse(msg *syscall.NetlinkMessage) (inode, uid uint32) {
 	return
 }
 
-func resolveProcessNameByProcSearch(inode, uid uint32) (string, error) {
+func resolveProcessNameByProcSearch(inode, uid uint32) (string, uint32, error) {
 	files, err := os.ReadDir(pathProc)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	buffer := make([]byte, syscall.PathMax)
@@ -166,7 +167,7 @@ func resolveProcessNameByProcSearch(inode, uid uint32) (string, error) {
 
 		info, err := f.Info()
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
 		if info.Sys().(*syscall.Stat_t).Uid != uid {
 			continue
@@ -187,12 +188,17 @@ func resolveProcessNameByProcSearch(inode, uid uint32) (string, error) {
 			}
 
 			if bytes.Equal(buffer[:n], socket) {
-				return os.Readlink(path.Join(processPath, "exe"))
+				pid, err := strconv.ParseUint(f.Name(), 10, 32)
+				if err != nil {
+					return "", 0, err
+				}
+				execPath, err := os.Readlink(path.Join(processPath, "exe"))
+				return execPath, uint32(pid), err
 			}
 		}
 	}
 
-	return "", fmt.Errorf("process of uid(%d),inode(%d) not found", uid, inode)
+	return "", 0, fmt.Errorf("process of uid(%d),inode(%d) not found", uid, inode)
 }
 
 func isPid(s string) bool {

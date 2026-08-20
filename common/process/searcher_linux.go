@@ -25,12 +25,13 @@ func (s *linuxSearcher) FindProcessInfo(ctx context.Context, network string, sou
 	if err != nil {
 		return nil, err
 	}
-	processPath, err := resolveProcessNameByProcSearch(inode, uid)
+	processPath, pid, err := resolveProcessNameByProcSearch(inode, uid)
 	if err != nil {
 		s.logger.DebugContext(ctx, "find process path: ", err)
 	}
 	return &adapter.ConnectionOwner{
 		UserId:      int32(uid),
+		ProcessID:   pid,
 		ProcessPath: processPath,
 	}, nil
 }

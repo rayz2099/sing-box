@@ -28,6 +28,7 @@ type ConnectionOwner struct {
 	UserName           string
 	ProcessPath        string
 	AndroidPackageName string
+	ProcessID          int32
 }
 
 type InterfaceUpdateListener interface {

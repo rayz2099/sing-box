@@ -205,6 +205,7 @@ func (w *platformInterfaceWrapper) FindConnectionOwner(request *adapter.FindConn
 		UserName:           result.UserName,
 		ProcessPath:        result.ProcessPath,
 		AndroidPackageName: result.AndroidPackageName,
+		ProcessID:          uint32(result.ProcessID),
 	}, nil
 }
 

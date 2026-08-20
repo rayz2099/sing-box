@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/process"
@@ -34,6 +35,7 @@ type Router struct {
 	ruleSets          []adapter.RuleSet
 	ruleSetMap        map[string]adapter.RuleSet
 	processSearcher   process.Searcher
+	processAccess     sync.Mutex
 	pauseManager      pause.Manager
 	trackers          []adapter.ConnectionTracker
 	platformInterface adapter.PlatformInterface
@@ -41,6 +43,11 @@ type Router struct {
 }
 
 func NewRouter(ctx context.Context, logFactory log.Factory, options option.RouteOptions, dnsOptions option.DNSOptions) *Router {
+	needFindProcess := hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess
+	// 为什么: Engine.Start 晚于 Router.Start, 进程 Scope 种子必须在这里就能看见, 否则 searcher 永远不启.
+	if engine := service.FromContext[adapter.MITMEngine](ctx); engine != nil && engine.NeedFindProcess() {
+		needFindProcess = true
+	}
 	return &Router{
 		ctx:               ctx,
 		logger:            logFactory.NewLogger("router"),
@@ -52,7 +59,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		network:           service.FromContext[adapter.NetworkManager](ctx),
 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
 		ruleSetMap:        make(map[string]adapter.RuleSet),
-		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
+		needFindProcess:   needFindProcess,
 		pauseManager:      service.FromContext[pause.Manager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
 	}
@@ -121,25 +128,11 @@ func (r *Router) Start(stage adapter.StartStage) error {
 		if C.IsAndroid && r.platformInterface != nil {
 			needFindProcess = true
 		}
-		r.needFindProcess = needFindProcess
+		if engine := service.FromContext[adapter.MITMEngine](r.ctx); engine != nil && engine.NeedFindProcess() {
+			needFindProcess = true
+		}
 		if needFindProcess {
-			if r.platformInterface != nil && r.platformInterface.UsePlatformConnectionOwnerFinder() {
-				r.processSearcher = newPlatformSearcher(r.platformInterface)
-			} else {
-				monitor.Start("initialize process searcher")
-				searcher, err := process.NewSearcher(process.Config{
-					Logger:         r.logger,
-					PackageManager: r.network.PackageManager(),
-				})
-				monitor.Finish()
-				if err != nil {
-					if err != os.ErrInvalid {
-						r.logger.Warn(E.Cause(err, "create process searcher"))
-					}
-				} else {
-					r.processSearcher = searcher
-				}
-			}
+			r.enableFindProcess(monitor)
 		}
 	case adapter.StartStatePostStart:
 		for i, rule := range r.rules {
@@ -203,7 +196,43 @@ func (r *Router) AppendTracker(tracker adapter.ConnectionTracker) {
 }
 
 func (r *Router) NeedFindProcess() bool {
+	r.processAccess.Lock()
+	defer r.processAccess.Unlock()
 	return r.needFindProcess
+}
+
+// EnsureFindProcess 在运行时 Scope 补进程谓词时把 searcher 拉起来.
+// 为什么: searcher 以前只在 Start 决定一次, POST /mitm/scopes 带 pid/name 会永远 miss.
+func (r *Router) EnsureFindProcess() {
+	r.enableFindProcess(nil)
+}
+
+func (r *Router) enableFindProcess(monitor *taskmonitor.Monitor) {
+	r.processAccess.Lock()
+	defer r.processAccess.Unlock()
+	r.needFindProcess = true
+	if r.processSearcher != nil {
+		return
+	}
+	if r.platformInterface != nil && r.platformInterface.UsePlatformConnectionOwnerFinder() {
+		r.processSearcher = newPlatformSearcher(r.platformInterface)
+		return
+	}
+	if monitor != nil {
+		monitor.Start("initialize process searcher")
+		defer monitor.Finish()
+	}
+	searcher, err := process.NewSearcher(process.Config{
+		Logger:         r.logger,
+		PackageManager: r.network.PackageManager(),
+	})
+	if err != nil {
+		if err != os.ErrInvalid {
+			r.logger.Warn(E.Cause(err, "create process searcher"))
+		}
+		return
+	}
+	r.processSearcher = searcher
 }
 
 func (r *Router) ResetNetwork() {

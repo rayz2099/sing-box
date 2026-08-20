@@ -21,13 +21,13 @@ import (
 
 // authority 只为 Client Leg 签 leaf. 和 outbound CertificateStore 不是同一份信任锚.
 type authority struct {
-	options    option.MITMOptions
-	timeFunc   func() time.Time
-	access     sync.Mutex
-	cert       *x509.Certificate
-	key        *ecdsa.PrivateKey
-	certPEM    []byte
-	leafCache  map[string]*tls.Certificate
+	options   option.MITMOptions
+	timeFunc  func() time.Time
+	access    sync.Mutex
+	cert      *x509.Certificate
+	key       *ecdsa.PrivateKey
+	certPEM   []byte
+	leafCache map[string]*tls.Certificate
 }
 
 func newAuthority(ctx context.Context, options option.MITMOptions) (*authority, error) {

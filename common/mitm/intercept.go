@@ -2,6 +2,7 @@ package mitm
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing/common/buf"
+	sbufio "github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	N "github.com/sagernet/sing/common/network"
 	"golang.org/x/net/http2"
@@ -46,6 +49,7 @@ type sess struct {
 	alpns   []string
 	neg     string
 	cli     net.Conn
+	cliR    *bufio.Reader
 	orig    net.Conn
 	origR   *bufio.Reader
 	h2cc    *http2.ClientConn
@@ -59,12 +63,21 @@ func (e *Engine) Intercept(
 	dialer N.Dialer,
 	onClose N.CloseHandlerFunc,
 ) {
+	hello, conn, err := PeekClientHello(ctx, conn)
+	if hello != nil && !allowInterceptALPN(hello.SupportedProtos) {
+		e.bypass(ctx, conn, metadata, dialer, onClose, "non-http alpn")
+		return
+	}
+	if err != nil && hello == nil {
+		e.bypass(ctx, conn, metadata, dialer, onClose, "client hello")
+		return
+	}
 	cli, hello, host, err := e.hsClient(ctx, conn, metadata)
 	if err != nil {
-		e.publish(adapter.MITMCaptureEvent{
+		e.publish(captureEvent(metadata, adapter.MITMCaptureEvent{
 			Host:    leafHint(metadata),
 			Warning: err.Error(),
-		})
+		}))
 		N.CloseOnHandshakeFailure(conn, onClose, err)
 		return
 	}
@@ -88,12 +101,9 @@ func (e *Engine) Intercept(
 	_ = cli.Close()
 	if err != nil && !isNormalClose(err) {
 		e.logger.ErrorContext(ctx, "mitm intercept: ", err)
-		e.publish(adapter.MITMCaptureEvent{
-			SessionID: s.sid,
-			Host:      host,
-			ALPN:      s.neg,
-			Warning:   err.Error(),
-		})
+		e.publish(s.event(adapter.MITMCaptureEvent{
+			Warning: err.Error(),
+		}))
 	} else {
 		err = nil
 	}
@@ -248,6 +258,7 @@ func (s *sess) closeOrig() {
 		_ = s.orig.Close()
 		s.orig = nil
 	}
+	s.origR = nil
 }
 
 func (e *Engine) logSess(
@@ -257,6 +268,10 @@ func (e *Engine) logSess(
 	neg string,
 ) {
 	if metadata.ProcessInfo != nil && metadata.ProcessInfo.ProcessPath != "" {
+		if metadata.ProcessInfo.ProcessID != 0 {
+			e.logger.InfoContext(ctx, "mitm intercept sni=", sni, " alpn=", neg, " process=", metadata.ProcessInfo.ProcessPath, " pid=", metadata.ProcessInfo.ProcessID)
+			return
+		}
 		e.logger.InfoContext(ctx, "mitm intercept sni=", sni, " alpn=", neg, " process=", metadata.ProcessInfo.ProcessPath)
 		return
 	}
@@ -292,6 +307,59 @@ func selectALPNs(protos []string) ([]string, error) {
 	return next, nil
 }
 
+func allowInterceptALPN(protos []string) bool {
+	if len(protos) == 0 {
+		return true
+	}
+	return len(httpALPNs(protos)) > 0
+}
+
+var errPeekHello = E.New("mitm peek client hello")
+
+// PeekClientHello 读 ClientHello 并把字节塞回 CachedConn.
+// 为什么: 关 sniff 时 Router 要自己拿 SNI 再 Match, 丢掉前缀会把后续转发打坏.
+func PeekClientHello(ctx context.Context, conn net.Conn) (*tls.ClientHelloInfo, net.Conn, error) {
+	var cache bytes.Buffer
+	reader := io.TeeReader(conn, &cache)
+	var hello *tls.ClientHelloInfo
+	err := tls.Server(sbufio.NewReadOnlyConn(reader), &tls.Config{
+		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+			copied := *chi
+			copied.SupportedProtos = append([]string{}, chi.SupportedProtos...)
+			hello = &copied
+			return nil, errPeekHello
+		},
+	}).HandshakeContext(ctx)
+	replay := conn
+	if cache.Len() > 0 {
+		replay = sbufio.NewCachedConn(conn, buf.As(cache.Bytes()).ToOwned())
+	}
+	if hello == nil {
+		return nil, replay, err
+	}
+	return hello, replay, nil
+}
+
+func (e *Engine) bypass(
+	ctx context.Context,
+	conn net.Conn,
+	metadata adapter.InboundContext,
+	dialer N.Dialer,
+	onClose N.CloseHandlerFunc,
+	reason string,
+) {
+	e.PublishBypass(ctx, metadata, reason)
+	dest, err := dialer.DialContext(ctx, N.NetworkTCP, metadata.Destination)
+	if err != nil {
+		N.CloseOnHandshakeFailure(conn, onClose, err)
+		return
+	}
+	err = sbufio.CopyConn(ctx, conn, dest)
+	if onClose != nil {
+		onClose(err)
+	}
+}
+
 func httpALPNs(protos []string) []string {
 	var next []string
 	for _, proto := range protos {
@@ -322,4 +390,18 @@ func itoa(v uint64) string {
 
 func isNormalClose(err error) bool {
 	return err == nil || E.IsClosedOrCanceled(err) || E.IsClosed(err) || err == io.EOF
+}
+
+func (s *sess) event(event adapter.MITMCaptureEvent) adapter.MITMCaptureEvent {
+	if event.SessionID == "" {
+		event.SessionID = s.sid
+	}
+	if event.Host == "" {
+		event.Host = s.host
+	}
+	if event.ALPN == "" {
+		event.ALPN = s.neg
+	}
+	fillOwner(&event, s.meta.ProcessInfo)
+	return event
 }

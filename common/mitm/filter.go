@@ -1,6 +1,7 @@
 package mitm
 
 import (
+	"net"
 	"net/http"
 	"strings"
 
@@ -54,7 +55,7 @@ func matchFilterWhen(
 	method string,
 	path string,
 ) bool {
-	if len(when.Host) > 0 && !containsFold(when.Host, host) {
+	if len(when.Host) > 0 && !containsHost(when.Host, host) {
 		return false
 	}
 	if len(when.Method) > 0 && !containsFold(when.Method, method) {
@@ -103,6 +104,24 @@ func containsFold(list []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func containsHost(list []string, value string) bool {
+	host := hostName(value)
+	for _, item := range list {
+		if strings.EqualFold(hostName(item), host) {
+			return true
+		}
+	}
+	return false
+}
+
+func hostName(host string) string {
+	name, _, err := net.SplitHostPort(host)
+	if err != nil {
+		return host
+	}
+	return name
 }
 
 var hopHeaders = []string{

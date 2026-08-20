@@ -38,3 +38,10 @@ func TestAddFilterAcceptsHeaderAndBlock(t *testing.T) {
 	require.Equal(t, "mitm-test", filters[1].Request.Set["User-Agent"])
 	require.Equal(t, []string{"Cookie"}, filters[1].Request.Remove)
 }
+
+func TestMatchFilterWhenHostIgnoresPort(t *testing.T) {
+	when := adapter.MITMFilterWhen{Host: []string{"www.google.com"}}
+	require.True(t, matchFilterWhen(when, "www.google.com:443", "GET", "/"))
+	require.True(t, matchFilterWhen(when, "www.google.com", "GET", "/"))
+	require.False(t, matchFilterWhen(when, "mail.google.com:443", "GET", "/"))
+}

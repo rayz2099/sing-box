@@ -25,11 +25,11 @@ func NewSearcher(_ Config) (Searcher, error) {
 }
 
 func (d *darwinSearcher) FindProcessInfo(ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
-	processName, err := findProcessName(network, source.Addr(), int(source.Port()))
+	processName, pid, err := findProcessName(network, source.Addr(), int(source.Port()))
 	if err != nil {
 		return nil, err
 	}
-	return &adapter.ConnectionOwner{ProcessPath: processName, UserId: -1}, nil
+	return &adapter.ConnectionOwner{ProcessID: pid, ProcessPath: processName, UserId: -1}, nil
 }
 
 var structSize = func() int {
@@ -48,7 +48,7 @@ var structSize = func() int {
 	}
 }()
 
-func findProcessName(network string, ip netip.Addr, port int) (string, error) {
+func findProcessName(network string, ip netip.Addr, port int) (string, uint32, error) {
 	var spath string
 	switch network {
 	case N.NetworkTCP:
@@ -56,14 +56,14 @@ func findProcessName(network string, ip netip.Addr, port int) (string, error) {
 	case N.NetworkUDP:
 		spath = "net.inet.udp.pcblist_n"
 	default:
-		return "", os.ErrInvalid
+		return "", 0, os.ErrInvalid
 	}
 
 	isIPv4 := ip.Is4()
 
 	value, err := unix.SysctlRaw(spath)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	buf := value
@@ -78,7 +78,10 @@ func findProcessName(network string, ip netip.Addr, port int) (string, error) {
 		itemSize += 208
 	}
 
-	var fallbackUDPProcess string
+	var (
+		fallbackUDPProcess string
+		fallbackUDPPid     uint32
+	)
 	// skip the first xinpgen(24 bytes) block
 	for i := 24; i+itemSize <= len(buf); i += itemSize {
 		// offset of xinpcb_n and xsocket_n
@@ -109,21 +112,26 @@ func findProcessName(network string, ip netip.Addr, port int) (string, error) {
 		if ip == srcIP {
 			// xsocket_n.so_last_pid
 			pid := readNativeUint32(buf[so+68 : so+72])
-			return getExecPathFromPID(pid)
+			execPath, err := getExecPathFromPID(pid)
+			if err != nil {
+				return "", 0, err
+			}
+			return execPath, pid, nil
 		}
 
 		// udp packet connection may be not equal with srcIP
 		if network == N.NetworkUDP && srcIP.IsUnspecified() && isIPv4 == srcIsIPv4 {
 			pid := readNativeUint32(buf[so+68 : so+72])
 			fallbackUDPProcess, _ = getExecPathFromPID(pid)
+			fallbackUDPPid = pid
 		}
 	}
 
 	if network == N.NetworkUDP && len(fallbackUDPProcess) > 0 {
-		return fallbackUDPProcess, nil
+		return fallbackUDPProcess, fallbackUDPPid, nil
 	}
 
-	return "", ErrNotFound
+	return "", 0, ErrNotFound
 }
 
 func getExecPathFromPID(pid uint32) (string, error) {

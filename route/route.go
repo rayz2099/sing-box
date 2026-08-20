@@ -155,7 +155,8 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		conn = tracker.RoutedConnection(ctx, conn, metadata, selectedRule, selectedOutbound)
 	}
 	// 为什么: CachedConn 已保留 ClientHello, tracker 已记账, 再往下会原样转发密文.
-	if r.mitmInterceptTCP(ctx, conn, metadata, selectedOutbound, onClose) {
+	conn, intercepted := r.mitmInterceptTCP(ctx, conn, metadata, selectedOutbound, onClose)
+	if intercepted {
 		return nil
 	}
 	if outboundHandler, isHandler := selectedOutbound.(adapter.ConnectionHandlerEx); isHandler {
@@ -431,6 +432,8 @@ func (r *Router) matchRule(
 					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath, ", user: ", processInfo.UserName)
 				} else if processInfo.UserId != -1 {
 					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath, ", user id: ", processInfo.UserId)
+				} else if processInfo.ProcessID != 0 {
+					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath, ", pid: ", processInfo.ProcessID)
 				} else {
 					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath)
 				}

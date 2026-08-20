@@ -1,8 +1,8 @@
 # MITM / Capture Design
 
-本机调试用. 解决 TUN/mixed 上看不见匹配域名的 TLS 明文. 不是 C 端产品, 默认关. 进程匹配延期.
+本机调试用. 解决 TUN/mixed 上看不见匹配域名的 TLS 明文. 不是 C 端产品, 默认关. Scope 按域名和/或进程.
 
-相关: `CONTEXT.md`, `docs/adr/0001-mitm-as-engine.md`, `docs/adr/0003-domain-scoped-v1.md`.
+相关: `CONTEXT.md`, `docs/adr/0001-mitm-as-engine.md`, `docs/adr/0003-domain-scoped-v1.md`, `docs/adr/0006-process-as-scope-predicate.md`.
 
 ## 问题
 
@@ -46,26 +46,31 @@ sequenceDiagram
 
 ## Scope
 
-运行时注册, 热路径读 snapshot. v1 只按域名, 不按进程.
+运行时注册, 热路径读 snapshot. 域名和进程都是可选谓词, 同一 Scope 内 AND. 禁止空 matcher. 禁止 `*.*`.
 
 ```json
 {
   "id": "ex",
   "domain": ["api.example.com"],
-  "domain_suffix": ["example.com"]
+  "domain_suffix": ["example.com"],
+          "process_name": ["Chrome"],
+  "process_id": [4242]
 }
 ```
+
+`process_name` 是对 `filepath.Base(ProcessPath)` 的 RE2 正则, 注册时编译, 未锚定所以 `Chrome` 能打到 `Google Chrome Helper`. 要全名写 `^Google Chrome$`. `process_id` 是 macOS `so_last_pid`. 列表内 OR, 字段间 AND.
 
 匹配顺序:
 
 1. `Capture == false` -> 不拆
 2. 没有任何 Scope -> 不拆 (默认闭)
 3. 没有 SNI 且没有 CONNECT Fqdn -> 不拆, 不对 IP 乱签
-4. 域名不中任何 Scope -> 不拆
+4. 没有任何 Scope 的 (域名 ∩ 进程) 命中 -> 不拆
 5. 否则 terminate Client Leg
 
-`domain` / `domain_suffix` 至少要有一个. 禁止空 Scope. 禁止 `*.*`.
-ConnectionOwner 这轮不做匹配键. 现成 `find_process` 仍可用于普通路由规则, 与 Engine 无关.
+域名约束空 = 该 Scope 不限制 host (仍要有 SNI 才能签 leaf). 进程约束空 = 不限制 ConnectionOwner. 有进程约束但 owner 查不到 -> 不中.
+
+ConnectionOwner 由 Router `find_process` 填, 在 Hook 之前已经在 metadata 上.
 
 ## 两段 TLS
 
@@ -140,7 +145,6 @@ GET    /mitm/capture         WS
 
 ## 必须同时做的旁路
 
-- 不依赖 `find_process`
 - 命中 Scope 的 QUIC: Bypass + warning, 不 reject, 代理必须成功
 - FakeIP: 先还原域名再签 leaf
 - ECH / 证书钉扎 / mTLS: Scope 未命中或握手失败则原样失败, 不做静默 fallback
@@ -172,8 +176,8 @@ GET    /mitm/capture         WS
 
 - 场景: 本机调试, 默认 Capture off
 - 主路径: TUN. mixed 走同一 Engine, 但验收只看 TUN
-- Scope: 域名必填, 多条并存, 任一命中. 无进程字段
-- Capture 开: 拆匹配域名的 TCP Client Leg, 推请求行 + header
+- Scope: 域名和/或进程, 多条并存, 任一命中. 空 matcher 禁止. 有进程约束时 lookup miss 不中
+- Capture 开: 拆匹配 Scope 的 TCP Client Leg, 推请求行 + header
 - Capture 关: 新连接不拆
 - 明文解码优先级: HTTP/1.1 先做满, 再解 HTTP/2 stream. HTTP/3 不做, QUIC 一律 Bypass+warning
 - QUIC / 无 SNI: Bypass + warning, 不准为了抓包把连接打掉

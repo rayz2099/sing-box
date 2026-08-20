@@ -13,9 +13,11 @@ type MITMOptions struct {
 	Scopes          []MITMScope `json:"scopes,omitempty"`
 }
 
-// MITMScope 是启动白名单种子. 空 domain 和 domain_suffix 非法.
+// MITMScope 是启动白名单种子. 域名和进程都空则非法.
 type MITMScope struct {
 	ID           string   `json:"id,omitempty"`
 	Domain       []string `json:"domain,omitempty"`
 	DomainSuffix []string `json:"domain_suffix,omitempty"`
+	ProcessName  []string `json:"process_name,omitempty"` // basename 正则, 未锚定
+	ProcessID    []uint32 `json:"process_id,omitempty"`
 }

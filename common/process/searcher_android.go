@@ -19,21 +19,22 @@ func NewSearcher(config Config) (Searcher, error) {
 }
 
 func (s *androidSearcher) FindProcessInfo(ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
-	_, uid, err := resolveSocketByNetlink(network, source, destination)
+	inode, uid, err := resolveSocketByNetlink(network, source, destination)
 	if err != nil {
 		return nil, err
 	}
+	owner := &adapter.ConnectionOwner{UserId: int32(uid)}
+	// 为什么: libbox 已能映射 ProcessID, 这里不填则 Android process_id Scope 恒 miss.
+	if _, pid, procErr := resolveProcessNameByProcSearch(inode, uid); procErr == nil {
+		owner.ProcessID = pid
+	}
 	if sharedPackage, loaded := s.packageManager.SharedPackageByID(uid % 100000); loaded {
-		return &adapter.ConnectionOwner{
-			UserId:             int32(uid),
-			AndroidPackageName: sharedPackage,
-		}, nil
+		owner.AndroidPackageName = sharedPackage
+		return owner, nil
 	}
 	if packageName, loaded := s.packageManager.PackageByID(uid % 100000); loaded {
-		return &adapter.ConnectionOwner{
-			UserId:             int32(uid),
-			AndroidPackageName: packageName,
-		}, nil
+		owner.AndroidPackageName = packageName
+		return owner, nil
 	}
-	return &adapter.ConnectionOwner{UserId: int32(uid)}, nil
+	return owner, nil
 }

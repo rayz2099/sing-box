@@ -45,7 +45,7 @@ Authorization: Bearer {{secret}}
 # -----BEGIN CERTIFICATE-----
 
 ### 注册精确域名 Scope
-# domain / domain_suffix 至少有一个, 空 Scope 会被 Engine 拒绝.
+# domain / domain_suffix / process_name / process_id 至少有一类, 空 Scope 会被 Engine 拒绝.
 POST {{host}}/mitm/scopes
 Authorization: Bearer {{secret}}
 Content-Type: application/json
@@ -53,6 +53,28 @@ Content-Type: application/json
 {
   "id": "{{scopeId}}",
   "domain": ["www.google.com", "google.com"]
+}
+
+### 注册进程 Scope (basename 正则, 未锚定)
+POST {{host}}/mitm/scopes
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "id": "chrome",
+  "process_name": ["Chrome"]
+}
+
+### 注册域名 ∩ 进程
+POST {{host}}/mitm/scopes
+Authorization: Bearer {{secret}}
+Content-Type: application/json
+
+{
+  "id": "google-chrome",
+  "domain": ["www.google.com"],
+  "process_name": ["Chrome"],
+  "process_id": [4242]
 }
 
 ### 注册后缀 Scope
@@ -126,6 +148,8 @@ Authorization: Bearer {{secret}}
 # {
 #   "session_id": "www.google.com-1",
 #   "host": "www.google.com",
+#   "process_name": "Google Chrome",
+#   "process_id": 4242,
 #   "alpn": "http/1.1",
 #   "method": "GET",
 #   "path": "/",

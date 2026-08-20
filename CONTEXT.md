@@ -13,8 +13,8 @@ The singleton that owns CA issuance, Scopes, Filters, and the Capture switch. Tr
 _Avoid_: MITM inbound, hijack inbound, detour inbound
 
 **Scope**:
-A runtime-registered matcher that decides which connections the Engine may terminate. v1 keys off domain (SNI or CONNECT Fqdn). Empty domain is forbidden. ConnectionOwner is deferred.
-_Avoid_: host rule, hostname list, MITM inbound tag, process-first matcher
+A runtime-registered matcher that decides which connections the Engine may terminate. Keys off domain (SNI or CONNECT Fqdn) and/or ConnectionOwner (`process_name` is a regex on the basename, `process_id` is exact). Empty matcher is forbidden. Domain-only still captures every process on that host. Process-only captures matching processes on any host that still has SNI/Fqdn.
+_Avoid_: host rule, hostname list, MITM inbound tag, process-first matcher, `*.*` global intercept, exact-only process_name
 
 **Client Leg**:
 The TLS session between a local process and the Engine. The process is the TLS client. The Engine presents a leaf signed by the Capture CA.
@@ -41,5 +41,5 @@ Enabled flag, Scopes, and Filters held only in Engine memory. Process restart wi
 _Avoid_: persistent MITM profile, cache_file, subscription
 
 **ConnectionOwner**:
-The local process bound to a TUN 5-tuple. Exists in the router today. Not part of v1 Scope.
-_Avoid_: user, app, inbound tag, v1 primary key
+The local process bound to a TUN 5-tuple. Exists in the router today. Optional extra Scope predicate: missing owner never matches a process-keyed Scope.
+_Avoid_: user, app, inbound tag, process as the only product identity

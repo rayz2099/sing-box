@@ -93,7 +93,7 @@ func getMITMCA(engine adapter.MITMEngine) func(w http.ResponseWriter, r *http.Re
 	}
 }
 
-// postMITMScope 不在控制面预判空域名, 让 Engine.AddScope 自己拒绝, 避免两套规则.
+// postMITMScope 不在控制面预判空 matcher, 让 Engine.AddScope 自己拒绝, 避免两套规则.
 func postMITMScope(engine adapter.MITMEngine) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var scope adapter.MITMScope
