@@ -147,7 +147,7 @@ GET    /mitm/capture         WS
 
 - 命中 Scope 的 QUIC: Bypass + warning, 不 reject, 代理必须成功
 - FakeIP: 先还原域名再签 leaf
-- ECH / 证书钉扎 / mTLS: Scope 未命中或握手失败则原样失败, 不做静默 fallback
+- ECH / 证书钉扎 / mTLS: 本连接握手失败则原样失败 (已发 ServerHello, 不能 Bypass). 同 ConnectionOwner+host 后续请求 Bypass, 避免 curl 一直 error 60. 无 owner 不标记. Capture 开关清空标记.
 
 ## 非目标 (v1)
 

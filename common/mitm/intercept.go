@@ -76,6 +76,8 @@ func (e *Engine) Intercept(
 	if err != nil {
 		// Client Leg 验签失败必须进 ERROR: tun 的 err.log 只收 warn/error, 只推 WS 会让本机看起来像「没 MITM」.
 		e.logHsFail(ctx, metadata, err)
+		e.markSkip(metadata)
+		e.logger.WarnContext(ctx, "mitm client handshake failed, later Bypass host=", leafHint(metadata), " process=", skipOwner(metadata.ProcessInfo))
 		e.publish(captureEvent(metadata, adapter.MITMCaptureEvent{
 			Host:    leafHint(metadata),
 			Warning: err.Error(),

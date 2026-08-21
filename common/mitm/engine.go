@@ -30,6 +30,7 @@ type Engine struct {
 	subs        []chan adapter.MITMCaptureEvent
 	diskState   *captureStateFile
 	skipPersist bool
+	skips       map[skipPair]struct{}
 }
 
 // storedScope 把 process_name 正则编进 Scope, 避免热路径 Compile.
@@ -130,6 +131,8 @@ func (e *Engine) SetEnabled(enabled bool) error {
 		e.enabled.Store(prev)
 		return err
 	}
+	// 为什么: 开关 Capture 必须让 curl 恢复或重试 Client Leg, 粘性 Bypass 只活在这一轮抓包.
+	e.skips = nil
 	return nil
 }
 
@@ -272,8 +275,12 @@ func (e *Engine) Match(metadata *adapter.InboundContext) bool {
 		return false
 	}
 	e.access.Lock()
+	skipped := e.hasSkipLocked(metadata.ProcessInfo, host)
 	scopes := e.scopes
 	e.access.Unlock()
+	if skipped {
+		return false
+	}
 	for _, scope := range scopes {
 		if matchScope(scope, host, metadata.ProcessInfo) {
 			return true

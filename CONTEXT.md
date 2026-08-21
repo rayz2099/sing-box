@@ -33,8 +33,8 @@ One intercepted TCP connection plus the HTTP exchanges on it after both legs are
 _Avoid_: connection (clash tracker), conn, flow
 
 **Bypass**:
-Forward ciphertext unchanged and emit a warning. Used when Capture cannot terminate (QUIC / HTTP3, no SNI). The proxy must still succeed.
-_Avoid_: reject, hijack-dns style drop, 旁路监听当 TCP TLS 明文方案
+Forward ciphertext unchanged and emit a warning. Used when Capture cannot terminate (QUIC / HTTP3, no SNI), and after a Client Leg handshake failure for the same ConnectionOwner+host so later requests still succeed. The failed first connection cannot Bypass because ServerHello was already sent.
+_Avoid_: reject, hijack-dns style drop, 旁路监听当 TCP TLS 明文方案, 失败后继续拆同一 process+host
 
 **CaptureState**:
 Enabled flag, Scopes, and Filters owned by the Engine and persisted in a sidecar beside the Capture CA. Restart and subscription rebuild reload that sidecar. Not part of the subscription profile or cache.db.

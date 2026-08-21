@@ -429,3 +429,49 @@ func TestInterceptHTTP2RedialsAfterOriginClose(t *testing.T) {
 		t.Fatalf("hits=%d", hits.Load())
 	}
 }
+
+func TestClientHandshakeFailMarksLaterBypass(t *testing.T) {
+	engine := newTestEngine(t)
+	engine.options.Insecure = true
+	if err := engine.SetEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.AddScope(adapter.MITMScope{
+		ID:          "curl",
+		ProcessName: []string{"^curl$"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	meta := adapter.InboundContext{
+		Domain:      "x.com",
+		ProcessInfo: &adapter.ConnectionOwner{ProcessPath: "/usr/bin/curl", ProcessID: 7},
+	}
+	if !engine.Match(&meta) {
+		t.Fatal("scope must match before handshake")
+	}
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan struct{})
+	go func() {
+		engine.Intercept(context.Background(), server, meta, staticDialer{addr: "127.0.0.1:1"}, nil)
+		close(done)
+	}()
+
+	tlsClient := tls.Client(client, &tls.Config{
+		ServerName: "x.com",
+		NextProtos: []string{"http/1.1"},
+		MinVersion: tls.VersionTLS12,
+	})
+	if err := tlsClient.Handshake(); err == nil {
+		t.Fatal("untrusted client must reject Capture CA")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("intercept did not return")
+	}
+	if engine.Match(&meta) {
+		t.Fatal("same curl+x.com must Bypass after Client Leg fail")
+	}
+}

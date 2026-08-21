@@ -272,3 +272,38 @@ func TestPublishBypassEmitsCapture(t *testing.T) {
 		t.Fatal("no bypass capture event")
 	}
 }
+
+func TestSkipPairBypassesSameOwnerHostOnly(t *testing.T) {
+	engine := newTestEngine(t)
+	require.NoError(t, engine.SetEnabled(true))
+	require.NoError(t, engine.AddScope(adapter.MITMScope{
+		ID:     "x",
+		Domain: []string{"x.com"},
+	}))
+	require.NoError(t, engine.AddScope(adapter.MITMScope{
+		ID:          "curl-all",
+		ProcessName: []string{"^curl$"},
+	}))
+	curl := &adapter.ConnectionOwner{ProcessPath: "/usr/bin/curl", ProcessID: 42}
+	chrome := &adapter.ConnectionOwner{ProcessPath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
+	curlX := &adapter.InboundContext{Domain: "x.com", ProcessInfo: curl}
+	curlGoogle := &adapter.InboundContext{Domain: "www.google.com", ProcessInfo: curl}
+	chromeX := &adapter.InboundContext{Domain: "x.com", ProcessInfo: chrome}
+	noOwner := &adapter.InboundContext{Domain: "x.com"}
+
+	require.True(t, engine.Match(curlX))
+	require.True(t, engine.Match(curlGoogle))
+	require.True(t, engine.Match(chromeX))
+	engine.markSkip(*curlX)
+	require.False(t, engine.Match(curlX), "same process+host must Bypass after Client Leg fail")
+	require.True(t, engine.Match(curlGoogle), "other host must not 连坐")
+	require.True(t, engine.Match(chromeX), "other process must not 连坐")
+
+	engine.markSkip(*noOwner)
+	require.True(t, engine.Match(noOwner), "no ConnectionOwner must not mark")
+
+	require.NoError(t, engine.SetEnabled(false))
+	require.False(t, engine.Match(curlX), "Capture off must not intercept")
+	require.NoError(t, engine.SetEnabled(true))
+	require.True(t, engine.Match(curlX), "Capture toggle must retry Client Leg")
+}
