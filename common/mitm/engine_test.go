@@ -2,6 +2,7 @@ package mitm
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -12,11 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newTestEngine 给单测一个内存 CA, 避免依赖磁盘证书路径.
+// newTestEngine 给单测一个内存 CA, sidecar 落到 TempDir, 避免污染真实 CA 目录.
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
 	engine, err := NewEngine(context.Background(), log.NewNOPFactory().Logger(), option.MITMOptions{
 		AutoGenerate: true,
+		StatePath:    filepath.Join(t.TempDir(), "capture-state.json"),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

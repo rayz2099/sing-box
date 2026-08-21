@@ -2,9 +2,17 @@ package mitm
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sagernet/sing-box/option"
 
@@ -78,4 +86,54 @@ func TestEngineCACertificatePEMAutoGenerate(t *testing.T) {
 	require.Contains(t, string(pemBytes), "BEGIN CERTIFICATE")
 	blockParsed := x509.NewCertPool()
 	require.True(t, blockParsed.AppendCertsFromPEM(pemBytes))
+}
+
+// TestRSAPathSignsLeaf 证明系统已信任的 RSA Capture CA 也能签 Client Leg, 避免再强制 ECDSA 根.
+func TestRSAPathSignsLeaf(t *testing.T) {
+	const serverName = "curl.example"
+
+	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+	now := time.Now()
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "sing-box-mitm", Organization: []string{"ray"}},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		MaxPathLenZero:        true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &caKey.PublicKey, caKey)
+	require.NoError(t, err)
+	keyDER, err := x509.MarshalPKCS8PrivateKey(caKey)
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "ca.crt")
+	keyPath := filepath.Join(dir, "ca.key")
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644))
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0o600))
+
+	ca, err := newAuthority(context.Background(), option.MITMOptions{
+		CertificatePath: certPath,
+		KeyPath:         keyPath,
+	})
+	require.NoError(t, err)
+
+	leaf, err := ca.leafFor(serverName)
+	require.NoError(t, err)
+	leafCert, err := x509.ParseCertificate(leaf.Certificate[0])
+	require.NoError(t, err)
+
+	roots := x509.NewCertPool()
+	require.True(t, roots.AppendCertsFromPEM(ca.certificatePEM()))
+	_, err = leafCert.Verify(x509.VerifyOptions{
+		DNSName: serverName,
+		Roots:   roots,
+	})
+	require.NoError(t, err)
 }

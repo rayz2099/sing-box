@@ -37,8 +37,8 @@ Forward ciphertext unchanged and emit a warning. Used when Capture cannot termin
 _Avoid_: reject, hijack-dns style drop, 旁路监听当 TCP TLS 明文方案
 
 **CaptureState**:
-Enabled flag, Scopes, and Filters held only in Engine memory. Process restart wipes them. Not written to cache.db or disk.
-_Avoid_: persistent MITM profile, cache_file, subscription
+Enabled flag, Scopes, and Filters owned by the Engine and persisted in a sidecar beside the Capture CA. Restart and subscription rebuild reload that sidecar. Not part of the subscription profile or cache.db.
+_Avoid_: memory-only MITM table, writing CaptureState into subscription JSON, cache_file
 
 **ConnectionOwner**:
 The local process bound to a TUN 5-tuple. Exists in the router today. Optional extra Scope predicate: missing owner never matches a process-keyed Scope.

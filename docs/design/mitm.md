@@ -124,7 +124,7 @@ GET    /mitm/capture         WS
 
 `enabled` 就是 Capture. 不提供 "仍拆 TLS 但不记录" 的第二开关.
 
-冷启动至少配 CA. `enabled` / `scopes` 是种子, 只在 Start 灌进内存, 不回写 JSON. Filter 仍只走 API.
+冷启动至少配 CA. `enabled` / `scopes` 是 sidecar 缺失时的种子. 运行时 API 改 CaptureState 后回写 `state_path` (缺省 CA 同目录 `capture-state.json`). sidecar 存在则忽略模板种子, 订阅更新不得覆盖. Filter 仍只走 API, 但会进 sidecar.
 
 ```json
 {
@@ -141,7 +141,7 @@ GET    /mitm/capture         WS
 }
 ```
 
-不写 `enabled` 则启动 Capture off. 运行时仍用 `PATCH /mitm` 和 `POST /mitm/scopes` 改, 重启后回到种子.
+不写 `enabled` 则首次启动 Capture off. 运行时仍用 `PATCH /mitm` 和 `POST /mitm/scopes` 改, 重启和订阅 rebuild 读 sidecar.
 
 ## 必须同时做的旁路
 
@@ -172,7 +172,7 @@ GET    /mitm/capture         WS
 
 ## 已锁定 (给夜间 agent)
 
-- Q5=禁止空域名, Q6=多 Scope 并存, Q7=TUN 主验收, Q8=Bypass+warning, Q9=先 h1 再 h2 不做 h3, Q10=不落盘
+- Q5=禁止空域名, Q6=多 Scope 并存, Q7=TUN 主验收, Q8=Bypass+warning, Q9=先 h1 再 h2 不做 h3, Q10=sidecar 持久化 CaptureState
 
 - 场景: 本机调试, 默认 Capture off
 - 主路径: TUN. mixed 走同一 Engine, 但验收只看 TUN
@@ -182,7 +182,7 @@ GET    /mitm/capture         WS
 - 明文解码优先级: HTTP/1.1 先做满, 再解 HTTP/2 stream. HTTP/3 不做, QUIC 一律 Bypass+warning
 - QUIC / 无 SNI: Bypass + warning, 不准为了抓包把连接打掉
 - Filter v1: `header` + `block` (先打在 h1 上, h2 接上同一套 Filter)
-- CaptureState 纯内存, 重启丢失
+- CaptureState 落 sidecar, 重启和订阅 rebuild 保留; 不写进订阅 JSON / cache.db
 - 控制面: clashapi `/mitm*` + 进程内接口
 - CA: `auto_generate` + path
 - 不要动态 inbound, 不要 config reload, 不要脚本

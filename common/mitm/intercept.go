@@ -74,6 +74,8 @@ func (e *Engine) Intercept(
 	}
 	cli, hello, host, err := e.hsClient(ctx, conn, metadata)
 	if err != nil {
+		// Client Leg 验签失败必须进 ERROR: tun 的 err.log 只收 warn/error, 只推 WS 会让本机看起来像「没 MITM」.
+		e.logHsFail(ctx, metadata, err)
 		e.publish(captureEvent(metadata, adapter.MITMCaptureEvent{
 			Host:    leafHint(metadata),
 			Warning: err.Error(),
@@ -259,6 +261,19 @@ func (s *sess) closeOrig() {
 		s.orig = nil
 	}
 	s.origR = nil
+}
+
+func (e *Engine) logHsFail(
+	ctx context.Context,
+	metadata adapter.InboundContext,
+	err error,
+) {
+	host := leafHint(metadata)
+	if metadata.ProcessInfo != nil && metadata.ProcessInfo.ProcessPath != "" {
+		e.logger.ErrorContext(ctx, "mitm client handshake: ", err, " host=", host, " process=", metadata.ProcessInfo.ProcessPath, " pid=", metadata.ProcessInfo.ProcessID)
+		return
+	}
+	e.logger.ErrorContext(ctx, "mitm client handshake: ", err, " host=", host)
 }
 
 func (e *Engine) logSess(

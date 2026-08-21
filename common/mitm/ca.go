@@ -2,6 +2,7 @@ package mitm
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -25,7 +26,7 @@ type authority struct {
 	timeFunc  func() time.Time
 	access    sync.Mutex
 	cert      *x509.Certificate
-	key       *ecdsa.PrivateKey
+	key       crypto.Signer
 	certPEM   []byte
 	leafCache map[string]*tls.Certificate
 }
@@ -62,12 +63,12 @@ func (a *authority) ensure() error {
 			return E.Cause(err, "parse mitm ca leaf")
 		}
 	}
-	priv, ok := tlsCert.PrivateKey.(*ecdsa.PrivateKey)
+	signer, ok := tlsCert.PrivateKey.(crypto.Signer)
 	if !ok {
-		return E.New("mitm ca key must be ecdsa")
+		return E.New("mitm ca key must implement crypto.Signer")
 	}
 	a.cert = tlsCert.Leaf
-	a.key = priv
+	a.key = signer
 	a.certPEM = certPEM
 	return nil
 }
@@ -179,7 +180,14 @@ func generateCA(timeFunc func() time.Time) ([]byte, []byte, error) {
 		nil
 }
 
-func signLeaf(parent *x509.Certificate, parentKey *ecdsa.PrivateKey, timeFunc func() time.Time, serverName string) (*tls.Certificate, error) {
+// signLeaf 用 Capture CA 签 Client Leg 的 SNI 叶子.
+// parentKey 走 crypto.Signer, 这样系统已信任的 RSA CA 和自签 ECDSA CA 都能签发, 客户端不用再装一份新根.
+func signLeaf(
+	parent *x509.Certificate,
+	parentKey crypto.Signer,
+	timeFunc func() time.Time,
+	serverName string,
+) (*tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err

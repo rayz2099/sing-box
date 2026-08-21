@@ -19,15 +19,17 @@ var _ adapter.MITMEngine = (*Engine)(nil)
 
 // Engine 持有 CaptureState. 热路径只读 snapshot, 注册走 COW.
 type Engine struct {
-	ctx     context.Context
-	logger  log.ContextLogger
-	options option.MITMOptions
-	ca      *authority
-	enabled atomic.Bool
-	access  sync.Mutex
-	scopes  []storedScope
-	filters []adapter.MITMFilter
-	subs    []chan adapter.MITMCaptureEvent
+	ctx         context.Context
+	logger      log.ContextLogger
+	options     option.MITMOptions
+	ca          *authority
+	enabled     atomic.Bool
+	access      sync.Mutex
+	scopes      []storedScope
+	filters     []adapter.MITMFilter
+	subs        []chan adapter.MITMCaptureEvent
+	diskState   *captureStateFile
+	skipPersist bool
 }
 
 // storedScope 把 process_name 正则编进 Scope, 避免热路径 Compile.
@@ -41,12 +43,22 @@ func NewEngine(ctx context.Context, logger log.ContextLogger, options option.MIT
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{
+	engine := &Engine{
 		ctx:     ctx,
 		logger:  logger,
 		options: options,
 		ca:      ca,
-	}, nil
+	}
+	// 为什么: Router.New 早于 Engine.Start, 进程 Scope 必须在 NewEngine 就能被 NeedFindProcess 看见.
+	path, pathErr := engine.stateFile()
+	if pathErr == nil {
+		state, err := readStateFile(path)
+		if err != nil {
+			return nil, err
+		}
+		engine.diskState = state
+	}
+	return engine, nil
 }
 
 func (e *Engine) Name() string {
@@ -60,7 +72,15 @@ func (e *Engine) Start(stage adapter.StartStage) error {
 	if err := e.ca.ensure(); err != nil {
 		return err
 	}
-	// 配置里的 scopes/enabled 只在启动灌进内存, 之后仍走 API, 不回写磁盘.
+	if _, err := e.stateFile(); err != nil {
+		return err
+	}
+	// 为什么: sidecar 是跨 rebuild 的真源; 模板种子只在 sidecar 不存在时用一次, 订阅更新不得覆盖.
+	e.skipPersist = true
+	defer func() { e.skipPersist = false }()
+	if e.diskState != nil {
+		return e.applyState(*e.diskState)
+	}
 	for _, scope := range e.options.Scopes {
 		err := e.AddScope(adapter.MITMScope{
 			ID:           scope.ID,
@@ -74,9 +94,12 @@ func (e *Engine) Start(stage adapter.StartStage) error {
 		}
 	}
 	if e.options.Enabled {
-		return e.SetEnabled(true)
+		if err := e.SetEnabled(true); err != nil {
+			return err
+		}
 	}
-	return nil
+	e.skipPersist = false
+	return e.persistNow()
 }
 
 func (e *Engine) Close() error {
@@ -99,7 +122,14 @@ func (e *Engine) SetEnabled(enabled bool) error {
 			return err
 		}
 	}
+	e.access.Lock()
+	defer e.access.Unlock()
+	prev := e.enabled.Load()
 	e.enabled.Store(enabled)
+	if err := e.writeLocked(); err != nil {
+		e.enabled.Store(prev)
+		return err
+	}
 	return nil
 }
 
@@ -140,10 +170,15 @@ func (e *Engine) AddScope(scope adapter.MITMScope) error {
 			return E.New("mitm scope already exists: ", scope.ID)
 		}
 	}
+	prev := e.scopes
 	e.scopes = append(append([]storedScope{}, e.scopes...), storedScope{
 		pub:    scope,
 		nameRE: nameRE,
 	})
+	if err := e.writeLocked(); err != nil {
+		e.scopes = prev
+		return err
+	}
 	return nil
 }
 
@@ -152,8 +187,13 @@ func (e *Engine) RemoveScope(id string) error {
 	defer e.access.Unlock()
 	for i, item := range e.scopes {
 		if item.pub.ID == id {
+			prev := e.scopes
 			next := append([]storedScope{}, e.scopes[:i]...)
 			e.scopes = append(next, e.scopes[i+1:]...)
+			if err := e.writeLocked(); err != nil {
+				e.scopes = prev
+				return err
+			}
 			return nil
 		}
 	}
@@ -186,7 +226,12 @@ func (e *Engine) AddFilter(filter adapter.MITMFilter) error {
 			return E.New("mitm filter already exists: ", filter.ID)
 		}
 	}
+	prev := e.filters
 	e.filters = append(append([]adapter.MITMFilter{}, e.filters...), filter)
+	if err := e.writeLocked(); err != nil {
+		e.filters = prev
+		return err
+	}
 	return nil
 }
 
@@ -195,8 +240,13 @@ func (e *Engine) RemoveFilter(id string) error {
 	defer e.access.Unlock()
 	for i, item := range e.filters {
 		if item.ID == id {
+			prev := e.filters
 			next := append([]adapter.MITMFilter{}, e.filters[:i]...)
 			e.filters = append(next, e.filters[i+1:]...)
+			if err := e.writeLocked(); err != nil {
+				e.filters = prev
+				return err
+			}
 			return nil
 		}
 	}
@@ -233,6 +283,13 @@ func (e *Engine) Match(metadata *adapter.InboundContext) bool {
 }
 
 func (e *Engine) NeedFindProcess() bool {
+	if e.diskState != nil {
+		for _, scope := range e.diskState.Scopes {
+			if len(scope.ProcessName) > 0 || len(scope.ProcessID) > 0 {
+				return true
+			}
+		}
+	}
 	for _, scope := range e.options.Scopes {
 		if len(scope.ProcessName) > 0 || len(scope.ProcessID) > 0 {
 			return true
