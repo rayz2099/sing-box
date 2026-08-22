@@ -2,6 +2,13 @@
 icon: material/alert-decagram
 ---
 
+#### 1.15.0
+
+* Add Capture/MITM Engine on TUN/mixed: domain and process Scope, Clash API `/mitm`, sidecar CaptureState **radiance**
+* Bypass QUIC and non-HTTP ALPN; sticky Bypass after Client Leg handshake failure **radiance**
+* Peek SNI when sniff is off so Scope still matches; redial Origin on a dead HTTP leg **radiance**
+* Persist subscription `active` across reboot when meta omits the field **radiance**
+
 #### 1.14.0
 
 * Add built-in subscription runtime (`run --subscription`) for mutually exclusive full profiles **radiance**
